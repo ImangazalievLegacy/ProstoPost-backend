@@ -1,0 +1,4 @@
+get_status => get_registration_status
+functions.php => string_functions.php
+get_status => get_login_status
+act=login при входе

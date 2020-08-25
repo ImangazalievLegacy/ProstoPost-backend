@@ -1,0 +1,132 @@
+function reg_exp_prepare($str)
+{
+	$search = array( "\\", "/", "\"", "-", "?", ".", "[", "]");
+	$replace   = array("\\\\", "\/", "\\\"", "\-", "\?", "\.", "\[", "\]");
+	
+	$str = str_replace($search, $replace, $str);
+	
+	return $str;
+}
+
+function wiki_page_prepare($page, $token, $page_title)
+{
+	global $IMAGE_OPENING_TAG, $IMAGE_CLOSING_TAG, $TEXT_OPENING_TAG, $TEXT_CLOSING_TAG, $ELEMENTS_DELIMITER;
+
+	$images_pattern = '/'.reg_exp_prepare($IMAGE_OPENING_TAG).'(.*?)'.reg_exp_prepare($IMAGE_CLOSING_TAG).'/is';
+	
+	echo 'images_pattern '.$images_pattern.'<br>';
+		
+	preg_match_all($images_pattern, $page, $images_matches);
+	
+	$n = count($images_matches[1]);
+	
+	$m = 1;
+
+	for ($i = 0; $i < $n; $i++)
+	{
+		$image_url = $images_matches[1][$i];
+		$image_filename = basename($image_url);
+		$images_matches[1][$i] = $image_filename;
+		$image = file_get_contents($image_url);
+		file_put_contents($image_filename, $image);
+		
+		if ($m > 5)
+		{
+			$m = 1;
+			$uploaded_pictures.= ', '.VK_upload_photo($token, $pictures, $page_title);
+			$pictures = null;
+		}
+		
+		$pictures[$m] = $image_filename;
+		
+		$m++;
+	}
+	
+	$uploaded_pictures.= ', '.VK_upload_photo($token, $pictures, $page_title);
+	
+	$uploaded_pictures =  explode(', ', $uploaded_pictures);
+	
+	$n = count($uploaded_pictures);
+	
+	for ($i = 0; $i < $n; $i++)
+	{
+		$image_url = $images_matches[1][$i];
+		$image_filename = basename($image_url);
+		
+		$size = getimagesize($image_filename);
+		$image_width = $size[0];
+		$image_height = $size[1];
+		
+		unlink($image_filename);
+		
+		$page = str_replace($images_matches[0][$i], '<center>[['.$uploaded_pictures[$i+1].'|'.$image_width.'x'.$image_height.'px;noborder| ]]</center>', $page);
+	}
+	
+	$page = str_replace($ELEMENTS_DELIMITER, '', $page);
+	$page = str_replace(array($TEXT_OPENING_TAG, $TEXT_CLOSING_TAG), '', $page);
+	
+	$link_pattern = '/<a.*?href=\"(.*?)\".*?>(.*?)<\/a>/is';
+	$wiki_link = '[$1|$2]';
+	
+	$page = preg_replace($link_pattern, $wiki_link, $page);
+	
+	
+	$search = array('<br>', '<br />');
+	$replace = array('<br/>', '<br/>');
+	
+	$page = str_replace($search, $replace, $page);
+	
+	$page = strip_tags($page, '<br/><br><b>');
+
+	return $page;
+	
+}
+
+if ($act == 'vk_post')
+{
+
+
+	
+	if (!file_exists($ROOT_FOLDER.$lang_folder.'/'.$category_folder.'/'.$parser_folder.'/'.$SAVED_DATA_FOLDER.'/'.$SAVED_INDEX_PAGE_FOLDER.'/'.$pid.'.txt'))
+	{
+		echo 'Page Not Found';
+		exit;
+	}
+	
+	$message = get_page_preview();
+	
+	$wiki_page = get_page_content();
+	
+	$pages = file($ROOT_FOLDER.$lang_folder.'/'.$category_folder.'/'.$parser_folder.'/'.$SAVED_DATA_FOLDER.'/'.$PAGES_LIST_FILE);
+		
+	for ($i = 0; $i < count($pages); $i++)
+	{
+		$page = explode($DELIMITER, $pages[$i]);
+		$page_id = $page[0];
+		$page_url = $page[1];
+		$page_title = $page[2];
+		$page_poster = $page[3];
+				
+		if ($pid == $page_id) break;
+	}
+	
+	$page_image = $ROOT_FOLDER.$lang_folder.'/'.$category_folder.'/'.$parser_folder.'/'.$page[3];
+	
+	$photos[1] = $page_image;
+	
+	$token = GetToken();
+	
+	$wiki_page = wiki_page_prepare($wiki_page, $token, $page_title);
+
+	$wiki_page_url = VK_create_wiki_page($token, $page_title, $wiki_page);
+	
+	$attachments = VK_upload_photo($token, $photos, $page_title);
+	
+	$attachments.= ','.$wiki_page_url;
+	
+	VK_post($token, $message, $attachments);
+	
+	
+	echo 'ok';
+	exit;
+}
